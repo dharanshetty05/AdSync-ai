@@ -6,7 +6,11 @@ export async function POST(req) {
     const prompt = `
         You are a strict JSON generator.
 
-        Check if generated content aligns with the ad.
+        Check:
+        1. Does it match the ad intent?
+        2. Is CTA aligned with the offer?
+        3. Any hallucinated or new claims?
+        4. Tone consistency?
 
         Return ONLY valid JSON:
         No explanation.
@@ -16,7 +20,7 @@ export async function POST(req) {
         Format:
         {
             "valid": true or false,
-            "issues": []
+            "issues": ["..."]
         }
 
         Ad:

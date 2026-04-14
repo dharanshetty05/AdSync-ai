@@ -15,15 +15,15 @@ export default function Home() {
   const handleGenerate = async () => {
     try {
       if (!state.adText || !state.url) {
-        return setState(prev => ({ ...prev, error: "All fields required" }));
+        return setState((prev) => ({ ...prev, error: "All fields required" }));
       }
 
-      setState(prev => ({ ...prev, loading: true, error: null }));
+      setState((prev) => ({ ...prev, loading: true, error: null }));
 
       // API 1: Analyse Ad
       const adRes = await fetch("/api/analyze-ad", {
         method: "POST",
-        body: JSON.stringify({ adText: state.adText })
+        body: JSON.stringify({ adText: state.adText }),
       });
       const adData = await adRes.json();
 
@@ -34,7 +34,7 @@ export default function Home() {
       });
       const pageData = await pageRes.json();
 
-      setState(prev => ({ ...prev, original: pageData }));
+      setState((prev) => ({ ...prev, original: pageData }));
 
       // API 3: Generate
       const genRes = await fetch("/api/generate", {
@@ -46,7 +46,7 @@ export default function Home() {
       });
       const genData = await genRes.json();
 
-      setState(prev => ({ ...prev, generated: genData }));
+      setState((prev) => ({ ...prev, generated: genData }));
 
       // API 4: Verify
       const verifyRes = await fetch("/api/verify", {
@@ -59,20 +59,65 @@ export default function Home() {
       });
       const verifyData = await verifyRes.json();
 
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         verification: verifyData,
         loading: false,
       }));
-
     } catch (err) {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         error: "Something went wrong",
         loading: false,
       }));
     }
+
+    // If invalid -> retry once
+    if (!verifyData.valid) {
+      const retryRes = await fetch("/api/generate", {
+        method: "POST",
+        body: JSON.stringify({
+          adAnalysis: adData,
+          pageContent: pageData,
+        }),
+      });
+
+      const retryData = await retryRes.json();
+
+      setState(prev => ({ ...prev, generated: retryData }));
+
+      const retryVerifyRes = await fetch("/api/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          original: pageData,
+          generated: retryData,
+          adAnalysis: adData,
+        }),
+      });
+
+      const retryVerifyData = await retryVerifyRes.json();
+
+      setState(prev => ({
+        ...prev,
+        verification: retryVerifyData,
+        loading: false,
+      }));
+
+      return;
+    }
   };
+
+  function highlightChange(original, modified) {
+      if (!original) return modified;
+
+      if (original === modified) return modified;
+
+      return (
+        <span className="bg-green-200 px-1 rounded">
+          {modified}
+        </span>
+      )
+    }
 
   return (
     <main className="min-h-screen p-8 bg-gray-100">
@@ -85,7 +130,7 @@ export default function Home() {
           className="w-full p-3 border rounded mb-4"
           value={state.adText}
           onChange={(e) =>
-            setState(prev => ({ ...prev, adText: e.target.value }))
+            setState((prev) => ({ ...prev, adText: e.target.value }))
           }
         />
 
@@ -94,7 +139,7 @@ export default function Home() {
           className="w-full p-3 border rounded mb-4"
           value={state.url}
           onChange={(e) =>
-            setState(prev => ({ ...prev, url: e.target.value }))
+            setState((prev) => ({ ...prev, url: e.target.value }))
           }
         />
 
@@ -102,42 +147,57 @@ export default function Home() {
           onClick={handleGenerate}
           disabled={state.loading}
           className="bg-black text-white px-6 py-2 rounded"
-       >
-        {state.loading ? "Generating..." : "Generate"}
-       </button>
+        >
+          {state.loading ? "Analyzing & Optimizing..." : "Generate"}
+        </button>
 
-       {state.error && (
-        <p className="text-red-500 mt-3">{state.error}</p>
-       )}
+        {state.error && <p className="text-red-500 mt-3">{state.error}</p>}
       </div>
 
-       {/* Results */}
-       {state.generated && (
+      {/* Results */}
+      {state.generated && (
         <div className="grid grid-cols-2 gap-6">
           {/* Original */}
           <div className="bg-white p-6 rounded-xl shadow">
             <h2 className="font-bold mb-4">Original</h2>
-            <p><strong>Headline:</strong> {state.original.headline}</p>
-            <p><strong>CTA:</strong> {state.original.cta}</p>
-            <p><strong>Paragraph:</strong> {state.original.paragraph}</p>
+            <p>
+              <strong>Headline:</strong> {state.original.headline}
+            </p>
+            <p>
+              <strong>CTA:</strong> {state.original.cta}
+            </p>
+            <p>
+              <strong>Paragraph:</strong> {state.original.paragraph}
+            </p>
           </div>
 
           {/* Generated */}
           <div className="bg-white p-6 rounded-xl shadow">
             <h2 className="font-bold mb-4">Modified</h2>
-            <p><strong>Headline:</strong> {state.generated.headline}</p>
-            <p><strong>CTA:</strong> {state.generated.cta}</p>
-            <p><strong>Paragraph:</strong> {state.generated.paragraph}</p>
+            <p>
+              <strong>Headline:</strong>{" "}
+              {highlightChange(state.original.headline, state.generated.headline)}
+            </p>
+
+            <p>
+              <strong>CTA:</strong>{" "}
+              {highlightChange(state.original.cta, state.generated.cta)}
+            </p>
+
+            <p>
+              <strong>Paragraph:</strong>{" "}
+              {highlightChange(state.original.paragraph, state.generated.paragraph)}
+            </p>
           </div>
         </div>
-       )}
+      )}
 
-       {/* Warning */}
-       {state.verification && state.verification.valid === false && (
+      {/* Warning */}
+      {state.verification && state.verification.valid === false && (
         <div className="mt-6 p-4 bg-yellow-200 rounded">
           ⚠️ Output may not fully align with ad intent
         </div>
-       )}
+      )}
     </main>
-  )
+  );
 }
