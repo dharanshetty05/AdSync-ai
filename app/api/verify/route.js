@@ -1,43 +1,80 @@
 import { callGroq } from "@/lib/groq";
 
 export async function POST(req) {
-    const { original, generated, adAnalysis } = await req.json();
+    try {
+        const { original, generated, adAnalysis } = await req.json();
 
-    const prompt = `
-        You are a strict JSON generator.
-
-        Check:
-        1. Does it match the ad intent?
-        2. Is CTA aligned with the offer?
-        3. Any hallucinated or new claims?
-        4. Tone consistency?
-
-        Return ONLY valid JSON:
-        No explanation.
-        No markdown.
-        No extra text.
-
-        Format:
-        {
-            "valid": true or false,
-            "issues": ["..."]
+        // Validating the input
+        if (!original || !generated || !adAnalysis) {
+            return Response.json(
+                { error: "Missing required inputs" },
+                { status: 400 }
+            );
         }
 
-        Ad:
-        ${JSON.stringify(adAnalysis)}
+        const prompt = `
+            You are a strict validation system.
 
-        Generated:
-        ${JSON.stringify(generated)}
-    `;
+            Your job is to detect if the generated content is safe and aligned.
 
-    const result = await callGroq(prompt);
+            Return STRICT JSON:
+            {
+                "valid": true or false,
+                "issues": ["..."]
+            }
+            
+            Mark valid = false if ANY of these occur:
+            - Content does NOT match ad intent
+            - CTA is NOT aligned with the offer
+            - New claims or hallucinations are introduced
+            - Tone is inconsistent with ad
+            - Structure or meaning significantly deviates from original
 
-    console.log("RAW LLM OUTPUT", result);
+            Rules:
+            - Be strict (fail on small inconsistencies)
+            - Do NOT be lenient
+            - Do NOT explain outside JSON
 
-    const cleaned = result
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
+            Ad:
+            ${JSON.stringify(adAnalysis)}
 
-    return Response.json(JSON.parse(cleaned));
+            Original Content:
+            ${JSON.stringify(original)}
+
+            Generated:
+            ${JSON.stringify(generated)}
+        `;
+
+        const result = await callGroq(prompt);
+
+        const cleaned = result
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
+
+        let parsed;
+
+        try {
+            parsed = JSON.parse(cleaned);
+        } catch {
+            return Response.json(
+                { valid: false, issues: ["Invalid verifier response"]},
+                { status: 500}
+            );
+        }
+
+        // Validating the output
+        const safeOutput = {
+            valid: typeof parsed.valid === "boolean" ? parsed.valid : false,
+            issues: Array.isArray(parsed.issues) ? parsed.issues : ["Unknown issue"]
+        };
+
+        return Response.json(safeOutput);
+
+    } catch (err) {
+        return Response.json(
+            { valid: false, issues: ["Verification failed"] },
+            { status: 500 }
+        );
+    }
 }

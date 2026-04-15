@@ -17,24 +17,62 @@ export default function Home() {
 
   const handleGenerate = async () => {
     try {
-      if (!state.adText || !state.url) {
-        return setState(prev => ({ ...prev, error: "All fields required" }));
+      if (!state.adText.trim()) {
+        return setState(prev => ({ ...prev, error: "Ad text is required" }));
+      }
+
+      if (!state.url.trim()) {
+        return setState(prev => ({ ...prev, error: "Landing page URL is required" }));
+      }
+
+      let url = state.url.trim();
+
+      if (!/^https?:\/\//i.test(url)) {
+        url = "https://" + url;
+      }
+
+      try {
+        const parsed = new URL(url);
+
+        if (!parsed.hostname.includes(".")) {
+          throw new Error("Invalid domain");
+        }
+
+      } catch {
+        return setState(prev => ({
+          ...prev,
+          error: "Please enter a valid website URL",
+          generated: null,
+          original: null,
+          verification: null,
+        }));
       }
 
       setState(prev => ({ ...prev, loading: true, error: null }));
 
+      // API 1: Analyze Ad Copys
       const adRes = await fetch("/api/analyze-ad", {
         method: "POST",
         body: JSON.stringify({ adText: state.adText }),
       });
+      if (!adRes.ok) {
+        const err = await adRes.json();
+        throw new Error(err.error || "Ad analysis failed");
+      }
       const adData = await adRes.json();
 
+      // API 2: Analyze Landing Page
       const pageRes = await fetch("/api/analyze-page", {
         method: "POST",
-        body: JSON.stringify({ url: state.url }),
+        body: JSON.stringify({ url }),
       });
+      if (!pageRes.ok) {
+        const err = await pageRes.json();
+        throw new Error(err.error || "Page analysis failed");
+      }
       const pageData = await pageRes.json();
 
+      // API 3: Generate 
       const genRes = await fetch("/api/generate", {
         method: "POST",
         body: JSON.stringify({
@@ -42,8 +80,13 @@ export default function Home() {
           pageContent: pageData,
         }),
       });
+      if (!genRes.ok) {
+        const err = await genRes.json();
+        throw new Error(err.error || "Generation failed");
+      }
       const genData = await genRes.json();
 
+      // API 4: Verify
       const verifyRes = await fetch("/api/verify", {
         method: "POST",
         body: JSON.stringify({
@@ -52,6 +95,10 @@ export default function Home() {
           adAnalysis: adData,
         }),
       });
+      if (!verifyRes.ok) {
+        const err = await verifyRes.json();
+        throw new Error(err.error || "Verification failed");
+      }
       const verifyData = await verifyRes.json();
 
       setState(prev => ({
@@ -478,7 +525,7 @@ export default function Home() {
               }}
             >
               <AlertTriangle size={16} />
-              Output may not fully align with ad intent
+              {state.verification.issues?.[0] || "Output may not fully align"}
             </motion.div>
           )}
         </AnimatePresence>

@@ -1,27 +1,69 @@
 import { callGroq } from "@/lib/groq";
 
 export async function POST(req) {
-    const { adText } = await req.json();
-
-    const prompt = `
-    Extract the following from this ad:
-    - audience
-    - offer
-    - tone
-    -intent
+    try {
+        const { adText } = await req.json();
     
-    Return ONLY JSON.
+        // Validating the input
+        if (!adText || typeof adText !== "string" || adText.trim().length === 0) {
+            return Response.json(
+                { error: "Ad text is required" },
+                { status: 400 }
+            );
+        }
+        const prompt = `
+        Extract structured information from the ad.
 
-    Ad: ${adText}
-    `;
+        Return STRICT JSON in this format:
+        {
+            "audience: "...",
+            "offer": "...",
+            "tone": "...",
+            "intent": "..."
+        }
+        
+        Rules:
+        - Do NOT add extra text
+        - Do NOT skip any field
+        - Keep values concise
 
-    const result = await callGroq(prompt);
+        Ad: 
+        ${adText}
+        `;
+    
+        const result = await callGroq(prompt);
+    
+        // JSON output cleaned and returned
+        const cleaned = result
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
+        
+        let parsed;
 
-    // JSON output cleaned and returned
-    const cleaned = result
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
+        try {
+            parsed = JSON.parse(cleaned);
+        } catch (err) {
+            return Response.json(
+                { error: "Invalid AI response format" },
+                { status: 500 }
+            );
+        }
 
-    return Response.json(JSON.parse(cleaned));
+        // Validating output
+        const safeOutput = {
+            audience: parsed.audience || "General audience",
+            offer: parsed.offer ||  "No clear offer",
+            tone: parsed.tone || "Neutral",
+            intent: parsed.intent || "General engagement"
+        };
+        
+        return Response.json(safeOutput);
+
+    } catch (err) {
+        return Response.json(
+            { err: "Failed to analyze ad" },
+            { status: 500 }
+        );
+    }
 }
